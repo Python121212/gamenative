@@ -41,6 +41,13 @@ android {
     namespace = "app.gamenative"
     compileSdk = 36
 
+    // ---- Pixel 9a (Tensor G4 / Mali-G715 / ARM64 only) --------------------
+    // Only English and Japanese resources are packaged; every other locale is
+    // dropped before aapt2 runs (the locale sources are no longer in the tree).
+    androidResources {
+        localeFilters += listOf("en", "ja")
+    }
+
     // https://developer.android.com/ndk/downloads
     ndkVersion = "27.3.13750724"
 
@@ -58,7 +65,8 @@ android {
     defaultConfig {
         applicationId = "app.gamenative"
 
-        minSdk = 26
+        // Pixel 9a ships Android 15+; no 32-bit / legacy ABI support needed.
+        minSdk = 29
 
         manifestPlaceholders["screenOrientation"] = "unspecified"
         buildConfigField("boolean", "XR_BUILD", "false")
@@ -66,6 +74,13 @@ android {
 
         versionCode = 24
         versionName = "1.4.0"
+
+        // Device profile used by the first-run bootstrap and the runtime pack.
+        buildConfigField("String", "DEVICE_PROFILE", "\"pixel9a\"")
+        buildConfigField("String", "DEVICE_SOC", "\"Tensor G4\"")
+        buildConfigField("String", "DEVICE_GPU", "\"Mali-G715 MP7\"")
+        buildConfigField("String", "RUNTIME_PACK_TAG", "\"pixel9a-runtime-v1\"")
+        buildConfigField("boolean", "PIXEL9A_ONLY", "true")
 
         buildConfigField("boolean", "GOLD", "false")
         fun secret(name: String) =
@@ -86,16 +101,11 @@ android {
         )
 
         ndk {
-            //abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
-            // Strip debug symbols from native libraries in release builds to reduce APK size
-            debugSymbolLevel = "SYMBOL_TABLE"
+            // Pixel 9a only has arm64-v8a. Prebuilt .so files are additionally
+            // stripped with NDK llvm-strip in CI before packaging.
+            abiFilters += listOf("arm64-v8a")
+            debugSymbolLevel = "NONE"
         }
-
-        // Localization support - Pixel 9a optimized: English + Japanese only
-        resourceConfigurations += listOf(
-            "en",      // English (default)
-            "ja"       // Japanese
-        )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -105,6 +115,7 @@ android {
         proguardFiles(
             getDefaultProguardFile("proguard-android-optimize.txt"),
             "proguard-rules.pro",
+            "proguard-pixel9a.pro",
         )
     }
 
@@ -174,15 +185,38 @@ android {
 
     packaging {
         resources {
-            excludes += "/DebugProbesKt.bin"
-            excludes += "/junit/runner/smalllogo.gif"
-            excludes += "/junit/runner/logo.gif"
-            excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+            // Metadata / test-only payloads never needed at runtime.
+            excludes += listOf(
+                "/DebugProbesKt.bin",
+                "/junit/runner/smalllogo.gif",
+                "/junit/runner/logo.gif",
+                "/META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+                "/META-INF/*.kotlin_module",
+                "/META-INF/AL2.0",
+                "/META-INF/LGPL2.1",
+                "/META-INF/LICENSE*",
+                "/META-INF/NOTICE*",
+                "/*.txt",
+                "/*.md",
+            )
         }
         jniLibs {
             // 'extractNativeLibs' was not enough to keep the jniLibs and
             // the libs went missing after adding on-demand feature delivery
             useLegacyPackaging = true
+            // Pixel 9a: no 32-bit ABIs, no XR runtime, and optional desktop-side
+            // helpers are fetched on demand instead of shipped in the APK.
+            excludes += listOf(
+                "**/armeabi-v7a/**",
+                "**/armeabi/**",
+                "**/x86/**",
+                "**/x86_64/**",
+                "**/libopenxr_loader.so",
+                "**/libcomet.so",
+                "**/libfossilize_replay.so",
+                "**/libfossilize_layer.so",
+                "**/liblsfg-vk-layer.so",
+            )
         }
     }
     testOptions {
@@ -207,6 +241,7 @@ android {
         // default locale. These extra translations are harmless and pre-existing; without this
         // the release-only lintVital pass fails on 150+ ExtraTranslation errors.
         disable += "ExtraTranslation"
+        disable += "MissingTranslation"
     }
     dynamicFeatures += setOf(":ubuntufs")
 

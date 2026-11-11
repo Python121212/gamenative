@@ -8,7 +8,6 @@ on:
       - '**.md'
       - 'docs/**'
       - 'keyvalues/**'
-      - 'tools/**'
   workflow_dispatch:
 
 concurrency:
@@ -24,6 +23,7 @@ jobs:
     timeout-minutes: 90
     env:
       GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx6g
+      PIXEL9A_PAYLOAD_DIR: /tmp/pixel9a-payload
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,24 +37,32 @@ jobs:
       - name: Locate preinstalled Android SDK
         run: |
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          echo "ANDROID_HOME=$SDK"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
           SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$SM" ]; then SM=$(find "$SDK" -name sdkmanager -type f 2>/dev/null | head -1); fi
-          echo "sdkmanager=$SM"
           echo "SDKMANAGER=$SM" >> "$GITHUB_ENV"
-          ls "$SDK/platforms" 2>/dev/null | tail -5 || true
 
       - name: Install Android SDK components
         run: |
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" --install "platforms;android-36" "build-tools;35.0.0" "ndk;27.3.13750724" "platform-tools" 2>&1 | tail -8
-          ls "$ANDROID_HOME/platforms" | tail -5
 
-      - name: Restore / strip native libraries
+      - name: Create local.properties (required by the secrets plugin)
         run: |
-          bash tools/restore-native-libs.sh || true
+          printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
+          cat local.properties
+
+      - name: Install zstd (ultra asset recompression)
+        run: |
+          if ! command -v zstd >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq zstd
+          fi
+          zstd --version | head -1
+
+      - name: Restore externalized payloads and strip native libraries
+        run: |
+          bash tools/restore-payloads.sh
           STRIP=$(find "$ANDROID_HOME/ndk/27.3.13750724" -name llvm-strip -type f 2>/dev/null | head -1)
           echo "llvm-strip: $STRIP"
           if [ -n "$STRIP" ]; then
@@ -62,9 +70,12 @@ jobs:
               "$STRIP" --strip-all "$f" 2>/dev/null || true
             done
           fi
-          du -sh app/src/main/jniLibs app/src/modern/jniLibs 2>/dev/null || true
+          du -sh app/src/main/jniLibs app/src/modern/jniLibs "$PIXEL9A_PAYLOAD_DIR" 2>/dev/null || true
 
-      - name: Build release APK (modern / arm64-v8a)
+      - name: Build ultra-compressed first-run runtime pack (XZ -9e / ZSTD 19)
+        run: bash tools/build-runtime-pack.sh
+
+      - name: Build release APK (modern / arm64-v8a / R8)
         run: |
           set -o pipefail
           ./gradlew :app:assembleModernRelease \
@@ -76,16 +87,48 @@ jobs:
         if: always()
         run: |
           mkdir -p dist
-          find app/build/outputs -type f \( -name '*.apk' -o -name 'output-metadata.json' \) -printf '%s %p\n' 2>/dev/null | sort -nr | head -20
+          find app/build/outputs -type f -name '*.apk' -printf '%s %p\n' 2>/dev/null | sort -nr | head -20
           APK=$(find app/build/outputs/apk -name '*modern*release*.apk' -type f | head -1)
           echo "APK=$APK"
           if [ -n "$APK" ]; then
             cp "$APK" dist/GameNative-Pixel9a.apk
-            echo "APK_SIZE_BYTES=$(stat -c %s dist/GameNative-Pixel9a.apk)" | tee dist/build-info.txt
-            echo "APK_SHA256=$(sha256sum dist/GameNative-Pixel9a.apk | cut -d' ' -f1)" | tee -a dist/build-info.txt
-            echo "GIT_SHA=$GITHUB_SHA" | tee -a dist/build-info.txt
+            {
+              echo "APK_SIZE_BYTES=$(stat -c %s dist/GameNative-Pixel9a.apk)"
+              echo "APK_SHA256=$(sha256sum dist/GameNative-Pixel9a.apk | cut -d' ' -f1)"
+              echo "GIT_SHA=$GITHUB_SHA"
+              echo "DEVICE=Google Pixel 9a (Tensor G4 / Mali-G715 / arm64-v8a)"
+            } > dist/build-info.txt
+            cat dist/build-info.txt
           fi
-          du -sh dist 2>/dev/null || true
+          du -sh dist
+
+      - name: Publish runtime pack + APK to GitHub Releases
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=pixel9a-runtime-v1
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Pixel 9a runtime payloads" \
+              --notes "Externalized Wine/Proton/container/driver payloads and ultra-compressed runtime asset pack for the Pixel 9a build. Downloaded automatically on first app launch."
+          fi
+          gh release upload "$TAG" \
+            dist/pixel9a-runtime-v1.tar.xz \
+            dist/pixel9a-runtime-v1.tar.xz.sha256 \
+            dist/GameNative-Pixel9a.apk \
+            dist/build-info.txt --clobber
+
+      - name: Push APK back to the branch
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "pixel9a-builder[bot]"
+          git config user.email "pixel9a-builder@users.noreply.github.com"
+          git add -f dist/GameNative-Pixel9a.apk dist/build-info.txt
+          git commit -m "chore: Pixel 9a release APK [skip ci]" --allow-empty
+          git push origin HEAD:"${GITHUB_REF_NAME}"
 
       - name: Upload gradle log on failure
         if: failure()
@@ -105,15 +148,4 @@ jobs:
           git config user.email "pixel9a-builder@users.noreply.github.com"
           git add -f dist/gradle-build.log 2>/dev/null || true
           git commit -m "ci: build diagnostics [skip ci]" --allow-empty
-          git push origin HEAD:"${GITHUB_REF_NAME}"
-
-      - name: Push APK back to the branch
-        if: success()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          git config user.name "pixel9a-builder[bot]"
-          git config user.email "pixel9a-builder@users.noreply.github.com"
-          git add -f dist/GameNative-Pixel9a.apk dist/build-info.txt
-          git commit -m "chore: Pixel 9a release APK [skip ci]" --allow-empty
           git push origin HEAD:"${GITHUB_REF_NAME}"

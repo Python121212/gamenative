@@ -1,7 +1,6 @@
 package app.gamenative.utils
 
 import android.content.Context
-import app.gamenative.BuildConfig
 import app.gamenative.PrefManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,11 +14,11 @@ object ManifestRepository {
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun loadManifest(context: Context): ManifestData {
-        if (BuildConfig.DEBUG) {
-            readLocalManifest(context)?.let {
-                Timber.i("ManifestRepository: using local debug manifest")
-                return it
-            }
+        // Pixel 9a: a tuned, device-specific catalogue is bundled in the APK so the
+        // first launch never depends on the upstream manifest host being reachable.
+        readLocalManifest(context)?.let {
+            Timber.i("ManifestRepository: using bundled Pixel 9a manifest")
+            return it
         }
 
         val cachedJson = PrefManager.componentManifestJson

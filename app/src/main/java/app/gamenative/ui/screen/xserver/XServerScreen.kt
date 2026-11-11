@@ -5853,7 +5853,12 @@ private fun extractArm64ecInputDLLs(context: Context, container: Container) {
     if (wineVersion != null && wineVersion.contains("proton-9.0-arm64ec")) {
         val wineFolder: File = File(imageFs.getWinePath() + "/lib/wine/")
         Log.d("XServerDisplayActivity", "Wine version contains arm64ec. Extracting input dlls to " + wineFolder.getPath())
-        val success: Boolean = TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context.assets, inputAsset, wineFolder)
+        val externalAsset = app.gamenative.utils.Pixel9aAssets.file(context, inputAsset)
+        val success: Boolean = if (externalAsset != null) {
+            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, externalAsset, wineFolder)
+        } else {
+            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context.assets, inputAsset, wineFolder)
+        }
         if (!success) {
             Log.d("XServerDisplayActivity", "Failed to extract input dlls")
         }
