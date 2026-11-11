@@ -1,0 +1,22 @@
+name: Pixel9a build smoke test
+on:
+  push:
+    branches: [ 'arena/**' ]
+    paths: [ '.github/workflows/pixel9a-smoke.yml' ]
+  workflow_dispatch:
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Environment probe
+        run: |
+          echo "java: $(java -version 2>&1 | head -1)"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "gradle wrapper: $(cat gradle/wrapper/gradle-wrapper.properties | grep distributionUrl)"
+          echo "workspace: $(du -sh . | cut -f1)"
+          echo ok > smoke.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke
+          path: smoke.txt

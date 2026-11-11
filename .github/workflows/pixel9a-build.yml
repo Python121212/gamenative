@@ -1,0 +1,152 @@
+name: Pixel 9a APK build
+
+on:
+  push:
+    branches: [ 'arena/**' ]
+    paths-ignore:
+      - 'dist/**'
+      - '**.md'
+      - 'docs/**'
+      - 'keyvalues/**'
+  workflow_dispatch:
+
+concurrency:
+  group: pixel9a-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx6g
+      PIXEL9A_PAYLOAD_DIR: /tmp/pixel9a-payload
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Locate preinstalled Android SDK
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SM" ]; then SM=$(find "$SDK" -name sdkmanager -type f 2>/dev/null | head -1); fi
+          echo "SDKMANAGER=$SM" >> "$GITHUB_ENV"
+
+      - name: Install Android SDK components
+        run: |
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;35.0.0" "ndk;27.3.13750724" "platform-tools" 2>&1 | tail -8
+
+      - name: Create local.properties (required by the secrets plugin)
+        run: |
+          printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
+          cat local.properties
+
+      - name: Install zstd (ultra asset recompression)
+        run: |
+          if ! command -v zstd >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq zstd
+          fi
+          zstd --version | head -1
+
+      - name: Restore externalized payloads and strip native libraries
+        run: |
+          bash tools/restore-payloads.sh
+          STRIP=$(find "$ANDROID_HOME/ndk/27.3.13750724" -name llvm-strip -type f 2>/dev/null | head -1)
+          echo "llvm-strip: $STRIP"
+          if [ -n "$STRIP" ]; then
+            for f in $(find app/src/main/jniLibs app/src/modern/jniLibs -name '*.so' 2>/dev/null); do
+              "$STRIP" --strip-all "$f" 2>/dev/null || true
+            done
+          fi
+          du -sh app/src/main/jniLibs app/src/modern/jniLibs "$PIXEL9A_PAYLOAD_DIR" 2>/dev/null || true
+
+      - name: Build ultra-compressed first-run runtime pack (XZ -9e / ZSTD 19)
+        run: bash tools/build-runtime-pack.sh
+
+      - name: Build release APK (modern / arm64-v8a / R8)
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleModernRelease \
+            --no-daemon --no-configuration-cache --stacktrace \
+            -Porg.gradle.jvmargs=-Xmx6g 2>&1 | tee gradle-build.log
+          test -n "$(find app/build/outputs/apk -name '*modern*release*.apk' -type f | head -1)"
+
+      - name: Collect outputs and report sizes
+        if: always()
+        run: |
+          mkdir -p dist
+          find app/build/outputs -type f -name '*.apk' -printf '%s %p\n' 2>/dev/null | sort -nr | head -20
+          APK=$(find app/build/outputs/apk -name '*modern*release*.apk' -type f | head -1)
+          echo "APK=$APK"
+          if [ -n "$APK" ]; then
+            cp "$APK" dist/GameNative-Pixel9a.apk
+            {
+              echo "APK_SIZE_BYTES=$(stat -c %s dist/GameNative-Pixel9a.apk)"
+              echo "APK_SHA256=$(sha256sum dist/GameNative-Pixel9a.apk | cut -d' ' -f1)"
+              echo "GIT_SHA=$GITHUB_SHA"
+              echo "DEVICE=Google Pixel 9a (Tensor G4 / Mali-G715 / arm64-v8a)"
+            } > dist/build-info.txt
+            cat dist/build-info.txt
+          fi
+          du -sh dist
+
+      - name: Publish runtime pack + APK to GitHub Releases
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=pixel9a-runtime-v1
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Pixel 9a runtime payloads" \
+              --notes "Externalized Wine/Proton/container/driver payloads and ultra-compressed runtime asset pack for the Pixel 9a build. Downloaded automatically on first app launch."
+          fi
+          gh release upload "$TAG" \
+            dist/pixel9a-runtime-v1.tar.xz \
+            dist/pixel9a-runtime-v1.tar.xz.sha256 \
+            dist/GameNative-Pixel9a.apk \
+            dist/build-info.txt --clobber
+
+      # 生成物(APK)は Git 履歴にコミットせず、Releases と Actions の
+      # アーティファクトから取得する（リポジトリを肥大化させないため）。
+      - name: Upload APK as workflow artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameNative-Pixel9a-apk
+          path: |
+            dist/GameNative-Pixel9a.apk
+            dist/build-info.txt
+          retention-days: 30
+
+      - name: Upload gradle log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-log
+          path: gradle-build.log
+
+      - name: Publish diagnostics on failure (readable through the API)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          if [ -f gradle-build.log ]; then tail -c 300000 gradle-build.log > dist/gradle-build.log; fi
+          git config user.name "pixel9a-builder[bot]"
+          git config user.email "pixel9a-builder@users.noreply.github.com"
+          git add -f dist/gradle-build.log 2>/dev/null || true
+          git commit -m "ci: build diagnostics [skip ci]" --allow-empty
+          git push origin HEAD:"${GITHUB_REF_NAME}"

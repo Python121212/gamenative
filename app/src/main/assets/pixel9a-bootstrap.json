@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "pack": {
+    "name": "pixel9a-runtime-v1.tar.xz",
+    "url": "https://github.com/Python121212/gamenative/releases/download/pixel9a-runtime-v1/pixel9a-runtime-v1.tar.xz",
+    "sha256Url": "https://github.com/Python121212/gamenative/releases/download/pixel9a-runtime-v1/pixel9a-runtime-v1.tar.xz.sha256"
+  },
+  "prefetch": [
+    { "name": "imagefs_bionic.txz", "optional": true },
+    { "name": "experimental-drm-20260116.tzst", "optional": true },
+    { "name": "steam.tzst", "optional": true }
+  ]
+}

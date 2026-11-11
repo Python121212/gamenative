@@ -21,6 +21,7 @@ import app.gamenative.service.SteamService
 import app.gamenative.sync.FrontendSyncManager
 import app.gamenative.ui.screen.xserver.RadialMenuCoordinator
 import app.gamenative.utils.AppExitRecorder
+import app.gamenative.utils.Pixel9aRuntime
 import app.gamenative.utils.ContainerMigrator
 import app.gamenative.utils.DebugReportUtils
 import app.gamenative.utils.DeviceInfo
@@ -101,6 +102,10 @@ class PluviaApp : SplitCompatApplication() {
 
         // Init our datastore preferences.
         PrefManager.init(this)
+
+        // Pixel 9a: Wine / Proton / container / driver payloads and the ultra-compressed
+        // runtime asset pack live outside the APK and are fetched automatically on app open.
+        Pixel9aRuntime.start(applicationContext, appScope)
         PlayBilling.init(this)
         NexusAuthManager.initialize(this)
         FrontendSyncManager.init(this)

@@ -1,69 +1,90 @@
-# GameNative - Google Pixel 9a 専用ビルド
+# GameNative — Google Pixel 9a 専用・超軽量ビルド
 
-Google Pixel 9a (Tensor G4, ARM64-v8a) にチューニングした GameNative の APK ビルド設定です。
+Google Pixel 9a（Tensor G4 / Mali-G715 MP7 / ARM64-v8a / Android 15+）専用にチューニングした
+GameNative の APK です。上流の `v1.4.0` APK（約 571 MB）から、**Wine / Proton / コンテナ /
+ドライバーをすべて外部化**し、APK 本体とワークスペースを 100 MB 以下（目標 90 MB）に抑えます。
 
-## サイズ削減の方針
+## 何をしているか
 
-| 項目 | 対応 |
-|------|------|
-| **ABI フィルタ** | `arm64-v8a` のみ（Pixel 9a は 64bit ARM のみ） |
-| **レガシーフレーバー削除** | `legacy`, `legacyXr`, `modernXr` を削除（x86/armeabi-v7a サポートを廃止、約 440MB 削減） |
-| **言語リソース** | `en` + `ja` のみ（15言語から削減） |
-| **ProGuard/R8** | `proguard-android-optimize.txt` を使用、minify/shrink 有効 |
-| **ネイティブライブラリ** | リリースビルドでデバッグシンボルを削除（`debugSymbolLevel = SYMBOL_TABLE`） |
-| **アセット圧縮** | ZSTD (`.tzst`) / XZ 圧縮を適用 |
-| **不要アセットの外部化** | `box86_64`, `dxwrapper`, `fexcore`, `steampipe`, `wowbox64` など x86 用エミュレータ・ドライバを APK から除外し、初回起動時に外部サーバーからダウンロード |
-| **Wine/Proton コンテナ** | `:ubuntufs` ダイナミック機能モジュールとして外部化。アプリ起動時に別途ダウンロード |
-| **グラフィックスドライバ** | `manifest.json` から Adreno/Turnip ドライバを削除（Pixel 9a は Adreno 非搭載のため不要） |
+| 項目 | 対応内容 |
+|---|---|
+| **ABI** | `arm64-v8a` のみ。`armeabi-v7a` / `x86` / `x86_64` の `.so` を APK から除外 |
+| **R8 / ProGuard** | `proguard-android-optimize.txt` + `proguard-rules.pro` + `proguard-pixel9a.pro`。minify / shrinkResources / R8 full mode、`Timber.d/v` と `Log.d/v` の `-assumenosideeffects` で DEX を削減。JNI 名は `-dontobfuscate` で保護 |
+| **デバッグシンボル** | `debugSymbolLevel = "NONE"` + CI で NDK の `llvm-strip --strip-all` を全 `.so` に適用 |
+| **ネイティブライブラリ圧縮** | `useLegacyPackaging = true`（APK 内で deflate 圧縮）。オプション機能の `.so`（`libcomet.so` / `libopenxr_loader.so` / `libfossilize_*.so` / `liblsfg-vk-layer.so`）は APK から除外し、各機能は「ファイルが無ければ無効化」する既存の分岐で安全にスキップ |
+| **Wine / Proton / コンテナ / ドライバー** | APK に同梱しない。`assets/manifest.json`（Pixel 9a 用に ARM64EC / bionic のみ、Adreno/Turnip ドライバーは空）と既存ダウンローダ経由で外部取得 |
+| **アセット超高圧縮** | 外部ランタイムパックを **XZ `-9e`**、同梱 `.tzst` を **ZSTD level 19** で再圧縮。PNG アイコン・ARM64EC 入力 DLL は APK から除外 |
+| **初回展開 / 自動ダウンロード** | `Pixel9aRuntime` がアプリ起動時に自動実行。GitHub Releases の `pixel9a-runtime-v1.tar.xz` を取得 → **SHA-256 検証** → `TarCompressorUtils(XZ)` で `filesDir/pixel9a_runtime/` に展開 → コンポーネント manifest を温め → 初回必須ファイルを事前取得。失敗時は次回起動で再試行（致命エラーにはしない） |
+| **不要アセット削除** | x86 用入力 DLL、未使用の 1.5 MB ベクター、14 言語の翻訳、テストソース、Room スキーマ履歴、ネイティブ C/C++ ソースをワークスペースから除外（ビルド時に pinned commit / GitHub Releases から復元） |
+| **Pixel 9a チューニング** | `minSdk 29` / `targetSdk 36` / `compileSdk 36`、`localeFilters = en, ja`、`DEVICE_PROFILE = pixel9a` / `DEVICE_SOC = Tensor G4` / `DEVICE_GPU = Mali-G715 MP7` を BuildConfig に埋め込み |
 
-## ビルド手順
+## 外部化の仕組み
 
-### 前提条件
+```
+APK (小)
+ ├─ Kotlin/Java DEX (R8)
+ ├─ 必須 .so のみ (arm64-v8a, strip 済み, deflate 圧縮)
+ ├─ assets/manifest.json       … Pixel 9a 用コンポーネント一覧
+ └─ assets/pixel9a-bootstrap.json … 初回ダウンロード計画
 
-- Android SDK (compileSdk 36, NDK 27.3.13750724)
-- JDK 17
-- Android NDK
-
-### ローカルビルド
-
-```bash
-# プロジェクトルート
-cd /path/to/gamenative
-
-# 現地キーストア設定（release-signed 用）
-cp app/keystores/keystore.properties.example app/keystores/keystore.properties
-# keystore.properties に storeFile, storePassword, keyAlias, keyPassword を設定
-
-# Pixel 9a 専用リリースビルド（modern フレーバー / arm64-v8a）
-./gradlew app:assembleModernRelease
-
-# 署名付きリリースビルド
-./gradlew app:assembleModernRelease-signed
+GitHub Releases / downloads.gamenative.app (大・120 MB 超もこちら)
+ ├─ pixel9a-runtime-v1.tar.xz      … アイコン / 入力 DLL (XZ -9e)
+ ├─ *.wcp / *.tzst / *.txz         … Proton / DXVK / VKD3D / FEX / Box64
+ └─ imagefs_bionic.txz             … コンテナ rootfs
 ```
 
-生成 APK: `app/build/outputs/apk/modern/release/`
+`PluviaApp.onCreate()` → `Pixel9aRuntime.start()` → バックグラウンドでダウンロード・検証・展開。
+`Pixel9aAssets.open()/file()` が「展開済みファイル → APK assets」の順に解決するため、
+ダウンロード未完了でも UI は落ちません。進捗は `Pixel9aRuntime.state`（`StateFlow`）で公開しています。
 
-### 初回起動時の外部ダウンロード
+## ビルド
 
-アプリを初回起動すると、以下を外部サーバーから自動ダウンロードします：
+ローカルには JDK / Android SDK が無いため、GitHub Actions（`.github/workflows/pixel9a-build.yml`）でビルドします。
 
-- Wine / Proton コンテナ（`:ubuntufs` ダイナミック機能モジュール）
-- グラフィックスドライバ（`manifest.json` の URL 経由）
-- x86 エミュレータ（FEX, Box64 など、ARM 上で x86 Windows ゲームを動作させるため）
+```bash
+# ブランチへの push で自動実行 / 手動実行（ブランチ名は現在の作業ブランチ）
+gh workflow run pixel9a-build.yml --ref "$(git rev-parse --abbrev-ref HEAD)"
+```
 
-ダウンロード先 URL は `manifest.json` に定義されており、Pixel 9a に必要な ARM64ec バージョンのみが含まれます。
+CI の流れ:
 
-### APK サイズ目標
+1. JDK 17 / `platforms;android-36` / `build-tools;35.0.0` / `ndk;27.3.13750724` を用意
+2. `tools/restore-payloads.sh` — ワーキングツリーから除外した `.so` と外部アセットを pinned commit から復元
+3. NDK `llvm-strip` で全 `.so` を strip
+4. `tools/build-runtime-pack.sh` — ZSTD 19 再圧縮 + XZ `-9e` ランタイムパック + SHA-256 を生成
+5. `./gradlew :app:assembleModernRelease`（R8 / shrinkResources / arm64-v8a）
+6. 生成物を GitHub Releases（タグ `pixel9a-runtime-v1`）と Actions アーティファクトに公開
+   （APK は Git 履歴にコミットしません）
 
-- **APK 本体**: 90MB 以下（目標）
-- **初回ダウンロード分**: Wine/Proton コンテナ等は別途ダウンロード（APK に含めず）
+生成 APK: `dist/GameNative-Pixel9a.apk`（デバッグ鍵署名。実機インストール用）
 
-## フレーバー構成
+- ダウンロード: <https://github.com/Python121212/gamenative/releases/tag/pixel9a-runtime-v1>
+- 実行履歴: `gh run list --workflow pixel9a-build.yml`
 
-- `modern` (デフォルト): arm64-v8a のみ、minSdk 29、targetSdk 36、Pixel 9a 対応
+### ローカルでビルドする場合（JDK 17 + Android SDK）
 
-削除済みフレーバー：`legacy`, `legacyXr`, `modernXr`
+`tools/setup-android-toolchain.sh` が `/tmp/toolchain` に最小構成をまとめて導入します
+（リポジトリは汚しません）。既定で JDK 17（Temurin）+ cmdline-tools + `platforms;android-36`
++ `build-tools;35.0.0`、`WITH_NDK=1` で `ndk;27.3.13750724` と `cmake;3.22.1` も導入します。
 
-## ライセンス
+```bash
+./tools/setup-android-toolchain.sh          # 初回（約 1 GB / 10 分程度）
+source /tmp/toolchain/env.sh                # JAVA_HOME / ANDROID_HOME / GRADLE_USER_HOME
+./gradlew :app:assembleModernRelease --no-configuration-cache
+```
 
-[LICENSE](LICENSE) を参照してください。
+必要な外向き通信: `dl.google.com`（Android SDK）、`services.gradle.org`（Gradle 本体）、
+`maven.google.com` / `repo1.maven.org`（依存解決）、`github.com`（JDK）。
+これらが遮断されたサンドボックス（GitHub / PyPI / npm のみ許可）では
+依存解決ができないためビルド不可で、CI 経由のみが現実的な手段です。
+
+## ワークスペース容量
+
+外部化したバイナリは `tools/` と `.gitignore` のルールでリポジトリに保持せず、
+`.git` 履歴（pinned commit）と GitHub Releases だけに置いています。
+`/tmp/pixel9a-payload` などの一時領域はワークスペースにカウントされません。
+
+## 上流
+
+- オリジナル: https://github.com/utkarshdalal/GameNative.git
+- ライセンス: [LICENSE](LICENSE)

@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-11",
+  "items": {
+    "driver": [],
+    "dxvk": [
+      {
+        "id": "2.7.1",
+        "name": "DXVK 2.7.1",
+        "url": "https://downloads.gamenative.app/dxwrapper/dxvk-2.7.1.tzst",
+        "variant": "bionic"
+      }
+    ],
+    "proton": [
+      {
+        "id": "proton-11.0-2-arm64ec-10",
+        "name": "Proton 11.0-2 ARM64ec (10)",
+        "url": "https://downloads.gamenative.app/proton-11.0-2-arm64ec-10.wcp",
+        "variant": "bionic"
+      }
+    ],
+    "fexcore": [
+      {
+        "id": "2609-0",
+        "name": "FEX 2609",
+        "url": "https://downloads.gamenative.app/FEXCore-2609.wcp",
+        "variant": "bionic"
+      }
+    ],
+    "box64": [
+      {
+        "id": "0.4.4-1",
+        "name": "Box64 0.4.4",
+        "url": "https://downloads.gamenative.app/box64-0.4.4.wcp",
+        "variant": "bionic"
+      }
+    ],
+    "wowbox64": [
+      {
+        "id": "0.4.4-1",
+        "name": "WOWBox64 0.4.4",
+        "url": "https://downloads.gamenative.app/Wowbox64-0.4.4.wcp",
+        "variant": "bionic"
+      }
+    ],
+    "vkd3d": [
+      {
+        "id": "3.1-gn1-0",
+        "name": "VKD3D 3.1",
+        "url": "https://downloads.gamenative.app/dxwrapper/vkd3d-proton-3.1-gn1.wcp",
+        "variant": "bionic"
+      }
+    ]
+  },
+  "device": "Google Pixel 9a / Tensor G4 / Mali-G715 (arm64-v8a only)"
+}
