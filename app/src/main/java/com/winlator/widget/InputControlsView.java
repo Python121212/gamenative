@@ -2068,7 +2068,7 @@ public class InputControlsView extends View {
         if (id < 0 || id >= icons.length) return null;
         if (icons[id] == null) {
             Context context = getContext();
-            try (InputStream is = context.getAssets().open("inputcontrols/icons/"+id+".png")) {
+            try (InputStream is = app.gamenative.utils.Pixel9aAssets.open(context, "inputcontrols/icons/"+id+".png")) {
                 icons[id] = BitmapFactory.decodeStream(is);
             }
             catch (IOException e) {}
