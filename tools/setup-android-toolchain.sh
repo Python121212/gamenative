@@ -23,6 +23,8 @@ COMPILE_SDK="${COMPILE_SDK:-36}"
 BUILD_TOOLS="${BUILD_TOOLS:-35.0.0}"
 NDK_VERSION="${NDK_VERSION:-27.3.13750724}"
 
+[ -f app/build.gradle.kts ] || { echo "リポジトリのルートで実行してください" >&2; exit 1; }
+
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 
 mkdir -p "$PREFIX" "$SDK_DIR/cmdline-tools" "$GRADLE_HOME_DIR"
@@ -30,9 +32,10 @@ mkdir -p "$PREFIX" "$SDK_DIR/cmdline-tools" "$GRADLE_HOME_DIR"
 # --- 1. JDK 17 (Temurin) ----------------------------------------------------
 if [ ! -x "$JDK_DIR/bin/javac" ]; then
   log "JDK 17 ($JDK_VERSION) を取得"
-  JDK_TAG="jdk-${JDK_VERSION/+/-}"        # 17.0.13+11 -> jdk-17.0.13-11
-  JDK_FILE="OpenJDK17U-jdk_x64_linux_hotspot_${JDK_VERSION/+_}.tar.gz"
-  url="https://github.com/adoptium/temurin17-binaries/releases/download/${JDK_TAG//-/+}/${JDK_FILE}"
+  # 17.0.13+11 -> TAG jdk-17.0.13%2B11 / FILE ..._17.0.13_11.tar.gz
+  JDK_TAG="jdk-${JDK_VERSION//+/%2B}"
+  JDK_FILE="OpenJDK17U-jdk_x64_linux_hotspot_${JDK_VERSION//+/_}.tar.gz"
+  url="https://github.com/adoptium/temurin17-binaries/releases/download/${JDK_TAG}/${JDK_FILE}"
   curl -fL --retry 3 -o "$PREFIX/jdk17.tar.gz" "$url"
   rm -rf "$JDK_DIR"; mkdir -p "$JDK_DIR"
   tar -xzf "$PREFIX/jdk17.tar.gz" -C "$JDK_DIR" --strip-components=1

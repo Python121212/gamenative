@@ -42,8 +42,8 @@ GitHub Releases / downloads.gamenative.app (大・120 MB 超もこちら)
 ローカルには JDK / Android SDK が無いため、GitHub Actions（`.github/workflows/pixel9a-build.yml`）でビルドします。
 
 ```bash
-# ブランチへの push で自動実行 / 手動実行
-gh workflow run pixel9a-build.yml --ref arena/b5bbba46-gamenative
+# ブランチへの push で自動実行 / 手動実行（ブランチ名は現在の作業ブランチ）
+gh workflow run pixel9a-build.yml --ref "$(git rev-parse --abbrev-ref HEAD)"
 ```
 
 CI の流れ:
@@ -53,9 +53,30 @@ CI の流れ:
 3. NDK `llvm-strip` で全 `.so` を strip
 4. `tools/build-runtime-pack.sh` — ZSTD 19 再圧縮 + XZ `-9e` ランタイムパック + SHA-256 を生成
 5. `./gradlew :app:assembleModernRelease`（R8 / shrinkResources / arm64-v8a）
-6. 生成物を GitHub Releases とブランチの `dist/` にプッシュ
+6. 生成物を GitHub Releases（タグ `pixel9a-runtime-v1`）と Actions アーティファクトに公開
+   （APK は Git 履歴にコミットしません）
 
 生成 APK: `dist/GameNative-Pixel9a.apk`（デバッグ鍵署名。実機インストール用）
+
+- ダウンロード: <https://github.com/Python121212/gamenative/releases/tag/pixel9a-runtime-v1>
+- 実行履歴: `gh run list --workflow pixel9a-build.yml`
+
+### ローカルでビルドする場合（JDK 17 + Android SDK）
+
+`tools/setup-android-toolchain.sh` が `/tmp/toolchain` に最小構成をまとめて導入します
+（リポジトリは汚しません）。既定で JDK 17（Temurin）+ cmdline-tools + `platforms;android-36`
++ `build-tools;35.0.0`、`WITH_NDK=1` で `ndk;27.3.13750724` と `cmake;3.22.1` も導入します。
+
+```bash
+./tools/setup-android-toolchain.sh          # 初回（約 1 GB / 10 分程度）
+source /tmp/toolchain/env.sh                # JAVA_HOME / ANDROID_HOME / GRADLE_USER_HOME
+./gradlew :app:assembleModernRelease --no-configuration-cache
+```
+
+必要な外向き通信: `dl.google.com`（Android SDK）、`services.gradle.org`（Gradle 本体）、
+`maven.google.com` / `repo1.maven.org`（依存解決）、`github.com`（JDK）。
+これらが遮断されたサンドボックス（GitHub / PyPI / npm のみ許可）では
+依存解決ができないためビルド不可で、CI 経由のみが現実的な手段です。
 
 ## ワークスペース容量
 
