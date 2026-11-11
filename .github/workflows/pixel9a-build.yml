@@ -34,13 +34,23 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - name: Locate preinstalled Android SDK
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SM="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SM" ]; then SM=$(find "$SDK" -name sdkmanager -type f 2>/dev/null | head -1); fi
+          echo "sdkmanager=$SM"
+          echo "SDKMANAGER=$SM" >> "$GITHUB_ENV"
+          ls "$SDK/platforms" 2>/dev/null | tail -5 || true
 
       - name: Install Android SDK components
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager --install "platforms;android-36" "build-tools;35.0.0" "ndk;27.3.13750724" "platform-tools" 2>&1 | tail -8
-          echo "ANDROID_HOME=$ANDROID_HOME"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;35.0.0" "ndk;27.3.13750724" "platform-tools" 2>&1 | tail -8
+          ls "$ANDROID_HOME/platforms" | tail -5
 
       - name: Restore / strip native libraries
         run: |
@@ -83,6 +93,19 @@ jobs:
         with:
           name: gradle-build-log
           path: gradle-build.log
+
+      - name: Publish diagnostics on failure (readable through the API)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          if [ -f gradle-build.log ]; then tail -c 300000 gradle-build.log > dist/gradle-build.log; fi
+          git config user.name "pixel9a-builder[bot]"
+          git config user.email "pixel9a-builder@users.noreply.github.com"
+          git add -f dist/gradle-build.log 2>/dev/null || true
+          git commit -m "ci: build diagnostics [skip ci]" --allow-empty
+          git push origin HEAD:"${GITHUB_REF_NAME}"
 
       - name: Push APK back to the branch
         if: success()
