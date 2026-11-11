@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-04",
+  "items": {
+    "driver": [],
+    "dxvk": [
+      {
+        "id": "2.7.1",
+        "name": "DXVK 2.7.1",
+        "url": "https://downloads.gamenative.app/dxwrapper/dxvk-2.7.1.tzst",
+        "variant": "bionic"
+      }
+    ],
+    "proton": [
+      {
+        "id": "proton-10.0-arm64ec-2",
+        "name": "Proton 10.0 ARM64ec",
+        "url": "https://downloads.gamenative.app/proton-10.0-arm64ec.wcp",
+        "variant": "bionic"
+      },
+      {
+        "id": "proton-10.0-4-arm64ec-1",
+        "name": "Proton 10.0-4 ARM64ec",
+        "url": "https://downloads.gamenative.app/proton-10.0-4-arm64ec.wcp",
+        "variant": "bionic"
+      },
+      {
+        "id": "proton-11.0-1-arm64ec-1",
+        "name": "Proton 11.0-1 ARM64ec",
+        "url": "https://downloads.gamenative.app/proton-11.0-1-arm64ec.wcp",
+        "variant": "bionic"
+      },
+      {
+        "id": "proton-11.0-2-arm64ec-1",
+        "name": "Proton 11.0-2 ARM64ec",
+        "url": "https://downloads.gamenative.app/proton-11.0-2-arm64ec.wcp",
+        "variant": "bionic"
+      },
+      {
+        "id": "proton-11.0-2-arm64ec-9",
+        "name": "Proton 11.0-2 ARM64ec (9)",
+        "url": "https://downloads.gamenative.app/proton-11.0-2-arm64ec-9.wcp",
+        "variant": "bionic"
+      },
+      {
+        "id": "proton-11.0-2-arm64ec-10",
+        "name": "Proton 11.0-2 ARM64ec (10)",
+        "url": "https://downloads.gamenative.app/proton-11.0-2-arm64ec-10.wcp",
+        "variant": "bionic"
+      }
+    ],
+    "fexcore": [
+      {
+        "id": "2609-0",
+        "name": "FEX 2609",
+        "url": "https://downloads.gamenative.app/FEXCore-2609.wcp",
+        "variant": "bionic"
+      }
+    ],
+    "box64": [
+      {
+        "id": "0.4.4-1",
+        "name": "Box64 0.4.4",
+        "url": "https://downloads.gamenative.app/box64-0.4.4.wcp",
+        "variant": "bionic"
+      }
+    ],
+    "wowbox64": [
+      {
+        "id": "0.4.4-1",
+        "name": "WOWBox64 0.4.4",
+        "url": "https://downloads.gamenative.app/Wowbox64-0.4.4.wcp",
+        "variant": "bionic"
+      }
+    ],
+    "vkd3d": [
+      {
+        "id": "3.1-gn1-0",
+        "name": "VKD3D 3.1",
+        "url": "https://downloads.gamenative.app/dxwrapper/vkd3d-proton-3.1-gn1.wcp",
+        "variant": "bionic"
+      }
+    ]
+  }
+}
