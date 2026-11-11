@@ -21,6 +21,18 @@ else
   echo "jniLibs already present"
 fi
 
+# 1b) Room auto-migration schemas are required by KSP at compile time.
+#     They are history-only data, so restore them from the pinned commit too.
+mkdir -p app/schemas/app.gamenative.db.PluviaDatabase
+for path in $(git ls-tree -r --name-only "$BASE_COMMIT" -- app/schemas); do
+  case "$path" in
+    *.json)
+      mkdir -p "$(dirname "$path")"
+      git cat-file blob "$BASE_COMMIT:$path" > "$path" ;;
+  esac
+done
+echo "restored $(find app/schemas -name '*.json' | wc -l) Room schemas"
+
 # 2) Assets externalized into the first-run runtime pack (staged OUTSIDE the repo
 #    so aapt2 cannot put them back into the APK).
 rm -rf "$STAGE"
